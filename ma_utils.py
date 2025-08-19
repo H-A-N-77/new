@@ -148,6 +148,50 @@ class ReplayBuffer(object):
         return np.array(o), np.array(x), np.array(y), np.array(o_), np.array(u), np.array(r).reshape(-1, 1), np.array(
             d).reshape(-1, 1), np.array(ep_reward)
 
+    def sample_n_step(self, batch_size, n_step=3, gamma=0.95):
+        """Sample a batch of n-step transitions.
+
+        Args:
+            batch_size (int): number of samples to draw.
+            n_step (int): number of steps for bootstrapping.
+            gamma (float): discount factor.
+
+        Returns:
+            tuple: (o, x, y, o_, u, r, d) arrays where rewards and next
+            observations are aggregated over n steps.
+        """
+        max_index = len(self.storage) - n_step
+        if max_index <= 0:
+            raise ValueError("Not enough samples to draw {}-step transitions".format(n_step))
+        ind = np.random.randint(0, max_index, size=batch_size)
+        o, x, y, o_, u, r, d = [], [], [], [], [], [], []
+
+        for i in ind:
+            O, X, Y, O_next, U, R, D = self.storage[i]
+            total_reward = R
+            done_flag = D
+            next_state = O_next
+
+            for step in range(1, n_step):
+                O_i, X_i, Y_i, O_next_i, U_i, R_i, D_i = self.storage[i + step]
+                total_reward += (gamma ** step) * R_i
+                next_state = O_next_i
+                done_flag = done_flag or D_i
+                if done_flag:
+                    break
+
+            o.append(np.array(O, copy=False))
+            x.append(np.array(X, copy=False))
+            y.append(np.array(Y, copy=False))
+            o_.append(np.array(next_state, copy=False))
+            u.append(np.array(U, copy=False))
+            r.append(np.array(total_reward, copy=False))
+            d.append(np.array(done_flag, copy=False))
+
+        return (np.array(o), np.array(x), np.array(y), np.array(o_),
+                np.array(u), np.array(r).reshape(-1, 1),
+                np.array(d).reshape(-1, 1))
+
 
 class embedding_Buffer(object):
     def __init__(self, max_size=1e6):
