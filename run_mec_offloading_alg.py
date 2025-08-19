@@ -12,6 +12,7 @@ import argparse
 import ma_utils
 import algorithms.mec_maxminMADDPG as MA_MINE_DDPG
 import algorithms.dynamic_mec_new_maxminMADDPG as DYNAMIC_DDPG
+import algorithms.gat_td3_maddpg as GAT_TD3
 import math
 import os
 
@@ -62,12 +63,15 @@ def evaluate_policy(policy, eval_episodes=10):
                 obs_t.append(obs_t_one)
             obs_t = np.array(obs_t)
             num_step += 1
-            scaled_a_list = []
-            for i in range(n_agents):
-                # print("obs_t[i]",obs_t[i])
-                a = policy.select_action(obs_t[i], i)
-                scaled_a = np.multiply(a, 1.0)
-                scaled_a_list.append(scaled_a)
+            if hasattr(policy, "select_joint_action"):
+                joint_action = policy.select_joint_action(obs_t)
+                scaled_a_list = [np.multiply(joint_action[i], 1.0) for i in range(n_agents)]
+            else:
+                scaled_a_list = []
+                for i in range(n_agents):
+                    a = policy.select_action(obs_t[i], i)
+                    scaled_a = np.multiply(a, 1.0)
+                    scaled_a_list.append(scaled_a)
 
             action_n = [[0, a[0], 0, a[1], 0] for a in scaled_a_list]
             next_obs, reward, done, _ = env.step(action_n)
@@ -157,6 +161,8 @@ if __name__ == "__main__":
 
     if args.policy_name == "MA_MINE_DDPG":
         policy = MA_MINE_DDPG.MA_T_DDPG(n_agents, obs_shape_n, sum(obs_shape_n), action_shape_n, 1.0, device, 0.0, 0.0)
+    elif args.policy_name == "GAT_TD3":
+        policy = GAT_TD3.MA_GAT_TD3(n_agents, obs_shape_n, sum(obs_shape_n), action_shape_n, 1.0, device)
     else:
         print("HIHIHI>>")
         policy = DYNAMIC_DDPG.MA_T_DDPG(n_agents, obs_shape_n, sum(obs_shape_n), action_shape_n, 1.0, device, 0.0, 0.0)
@@ -426,17 +432,30 @@ if __name__ == "__main__":
         scaled_a_list = []
         action_class_list = []
 
-        for i in range(n_agents):
-            a = policy.select_action(obs[i], i)
-            scaled_a = np.multiply(a, 1.0)
-            scaled_a = np.clip(scaled_a, -0.9999, 0.9999)
-            meaningful_scaled_a = scaled_a
-            meaningful_scaled_a[0] = int(np.floor((scaled_a[0] + 1) * env.base_station_set.base_station_num / 2))
-            meaningful_scaled_a[1] = (scaled_a[1] + 1) / 2
-            print("meaningful_scaled_a:", meaningful_scaled_a)
-            action_class = Action(meaningful_scaled_a, global_config)
-            scaled_a_list.append(scaled_a)
-            action_class_list.append(action_class)
+        if args.policy_name == "GAT_TD3":
+            joint_action = policy.select_joint_action(obs)
+            for i in range(n_agents):
+                scaled_a = np.multiply(joint_action[i], 1.0)
+                scaled_a = np.clip(scaled_a, -0.9999, 0.9999)
+                meaningful_scaled_a = scaled_a
+                meaningful_scaled_a[0] = int(np.floor((scaled_a[0] + 1) * env.base_station_set.base_station_num / 2))
+                meaningful_scaled_a[1] = (scaled_a[1] + 1) / 2
+                print("meaningful_scaled_a:", meaningful_scaled_a)
+                action_class = Action(meaningful_scaled_a, global_config)
+                scaled_a_list.append(scaled_a)
+                action_class_list.append(action_class)
+        else:
+            for i in range(n_agents):
+                a = policy.select_action(obs[i], i)
+                scaled_a = np.multiply(a, 1.0)
+                scaled_a = np.clip(scaled_a, -0.9999, 0.9999)
+                meaningful_scaled_a = scaled_a
+                meaningful_scaled_a[0] = int(np.floor((scaled_a[0] + 1) * env.base_station_set.base_station_num / 2))
+                meaningful_scaled_a[1] = (scaled_a[1] + 1) / 2
+                print("meaningful_scaled_a:", meaningful_scaled_a)
+                action_class = Action(meaningful_scaled_a, global_config)
+                scaled_a_list.append(scaled_a)
+                action_class_list.append(action_class)
         next_state_class_list, cost_array, reward_array, cost_array_max, done_list, _ = env.step(state_class_list,
                                                                                                  action_class_list,
                                                                                                  episode_timesteps)
